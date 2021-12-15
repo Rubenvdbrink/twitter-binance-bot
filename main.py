@@ -9,7 +9,7 @@ twitter_bearer_token = os.environ.get("TWITTER_BEARER_TOKEN")
 # User id you want to check tweets for.
 twitter_user_id = 44196397
 # Can be anything.
-twitter_user_agent = "ElonDogeBot"
+twitter_user_agent = "twitter-binance-bot"
 
 # Binance api key (https://www.binance.com/en/my/settings/api-management)
 binance_api_key = os.environ.get("BINANCE_API_KEY")
@@ -21,7 +21,7 @@ trade_pair = "DOGEUSDT"
 # The quantity you want to trade in USDT
 trade_amount = "45"
 # The words that need to be tweeted in order to trigger a buy order
-keywords = ["DOGE"]
+keywords = ["DOGE", "DOG", "DOGGY"]
 
 timestamp = ""
 last_tweet = ""
@@ -30,7 +30,7 @@ last_amount = 0
 
 def bearer_oauth(auth):
     auth.headers["Authorization"] = f"Bearer {twitter_bearer_token}"
-    auth.headers["User-Agent"] = "ElonDogeListener"
+    auth.headers["User-Agent"] = twitter_user_agent
     return auth
 
 
@@ -87,7 +87,7 @@ def generate_binance_signature(side):
 
 def create_order(side):
     set_new_timestamp()
-    return requests.post("https://api.binance.com/api/v3/order",
+    return requests.post("https://api.binance.com/api/v3/order",  # add /test to the url to use binances' test network
                          params={
                              "symbol": trade_pair,
                              "side": side,
@@ -142,7 +142,7 @@ def main():
     last_tweet = get_latest_tweet(get_tweets())
 
     while True:
-        time.sleep(5)
+        time.sleep(45)
         tweets_response = get_tweets()
         tweet = get_latest_tweet(tweets_response)
         if not update_tweet_if_new(tweet):
@@ -151,8 +151,8 @@ def main():
             continue
         calculate_trade_amount()
         create_buy_order()
-        time.sleep(20)
-        create_sell_order()
+        time.sleep(300)  # wait 300 seconds before selling again, remove line if you don't want to sell
+        create_sell_order()  # remove line if you don't want to sell
         calculate_sell_value()
 
 

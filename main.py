@@ -3,6 +3,7 @@ import os
 import hashlib
 import hmac
 import time
+import datetime
 
 # Your Twitter bearer token (https://developer.twitter.com/en/portal/dashboard).
 twitter_bearer_token = os.environ.get("TWITTER_BEARER_TOKEN")
@@ -87,41 +88,40 @@ def generate_binance_signature(side):
 
 def create_order(side):
     set_new_timestamp()
-    return requests.post("https://api.binance.com/api/v3/order",  # add /test to the url to use binances' test network
-                         params={
-                             "symbol": trade_pair,
-                             "side": side,
-                             "type": "MARKET",
-                             "quantity": last_amount,
-                             "timestamp": timestamp,
-                             "signature": generate_binance_signature(side),
-                         },
-                         headers={
-                             "X-MBX-APIKEY": binance_api_key,
-                         })
+    response = requests.post("https://api.binance.com/api/v3/order",
+                             # add /test to the url to use the binance test network
+                             params={
+                                 "symbol": trade_pair,
+                                 "side": side,
+                                 "type": "MARKET",
+                                 "quantity": last_amount,
+                                 "timestamp": timestamp,
+                                 "signature": generate_binance_signature(side),
+                             },
+                             headers={
+                                 "X-MBX-APIKEY": binance_api_key,
+                             })
+    if response.status_code != 200:
+        raise Exception(
+            "Cannot make {} order (Code: {}) (Message: {})".format(side.lower(), response.status_code, response.text))
+    return response
 
 
 def create_buy_order():
     response = create_order("BUY")
-    if response.status_code != 200:
-        raise Exception("Cannot make buy order (Code: {}) (Message: {})".format(response.status_code, response.text))
     print("Buy order created for {} {}".format(last_amount, trade_pair))
     return response.json()
 
 
 def create_sell_order():
     response = create_order("SELL")
-    if response.status_code != 200:
-        raise Exception("Cannot make sell order (Code: {}) (Message: {})".format(response.status_code, response.text))
     print("Sell order created for {} {}".format(last_amount, trade_pair))
     return response.json()
 
 
 def calculate_trade_amount():
     global last_amount
-    response = requests.get("https://api.binance.com/api/v3/ticker/price?symbol={}".format(trade_pair))
-    if response.status_code != 200:
-        raise Exception("Cannot get price (Code: {}) (Message: {})".format(response.status_code, response.text))
+    response = get_trade_value()
     price = response.json().get("price")
     amount = float(trade_amount) // float(price)
     amount = int(amount)
@@ -131,10 +131,15 @@ def calculate_trade_amount():
 
 
 def calculate_sell_value():
+    response = get_trade_value()
+    return last_amount * float(response.json().get("price"))
+
+
+def get_trade_value():
     response = requests.get("https://api.binance.com/api/v3/ticker/price?symbol={}".format(trade_pair))
     if response.status_code != 200:
         raise Exception("Cannot get price (Code: {}) (Message: {})".format(response.status_code, response.text))
-    print("Sell value: " + str(last_amount * float(response.json().get("price"))))
+    return response
 
 
 def main():
@@ -142,18 +147,23 @@ def main():
     last_tweet = get_latest_tweet(get_tweets())
 
     while True:
-        time.sleep(45)
-        tweets_response = get_tweets()
-        tweet = get_latest_tweet(tweets_response)
-        if not update_tweet_if_new(tweet):
+        try:
+            time.sleep(45)
+            print("datetime: " + str(datetime.datetime.now()))
+            tweets_response = get_tweets()
+            tweet = get_latest_tweet(tweets_response)
+            if not update_tweet_if_new(tweet):
+                continue
+            if not check_if_tweet_matches_keywords():
+                continue
+            calculate_trade_amount()
+            create_buy_order()
+            time.sleep(300)  # wait 300 seconds before selling again, remove line if you don't want to sell
+            create_sell_order()  # remove line if you don't want to sell
+            print("Sell value: " + str(calculate_sell_value()))
+        except Exception as e:
+            print(e)
             continue
-        if not check_if_tweet_matches_keywords():
-            continue
-        calculate_trade_amount()
-        create_buy_order()
-        time.sleep(300)  # wait 300 seconds before selling again, remove line if you don't want to sell
-        create_sell_order()  # remove line if you don't want to sell
-        calculate_sell_value()
 
 
 if __name__ == "__main__":
